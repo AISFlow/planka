@@ -1,12 +1,11 @@
 # syntax=docker/dockerfile:1
-
 # ───────────────────────────── Base stage ─────────────────────────────
-FROM node:lts-bookworm AS base
+FROM public.ecr.aws/docker/library/node:lts-bookworm AS base
 
 WORKDIR /opt/build-stage
 # Enable corepack and prepare pnpm
 RUN corepack enable && corepack prepare pnpm@9 --activate
-RUN git clone --recurse-submodules -j8 https://github.com/plankanban/planka.git
+RUN git clone --recurse-submodules -j8 https://github.com/AISFlow/planka-ko.git planka
 
 # ───────────────────────────── Server build stage ─────────────────────────────
 FROM base AS server-build
@@ -24,7 +23,7 @@ RUN pnpm import && pnpm install --prod
 RUN DISABLE_ESLINT_PLUGIN=true npm run build
 
 # ───────────────────────────── Final runtime stage ─────────────────────────────
-FROM node:lts-bookworm-slim AS final
+FROM public.ecr.aws/docker/library/node:lts-bookworm-slim AS final
 ENV NODE_ENV=production
 ENV GOSU_VERSION=1.17
 ENV TINI_VERSION=v0.19.0

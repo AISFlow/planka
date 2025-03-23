@@ -137,5 +137,3 @@ jobs:
           sources: |
             ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
             ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
-            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
-            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64

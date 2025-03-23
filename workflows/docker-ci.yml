@@ -1,0 +1,154 @@
+name: Docker CI
+
+on:
+  push:
+    paths:
+      - 'Dockerfile'
+  workflow_dispatch:
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  REGISTRY_DOCKER: docker.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  set-up:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+      lower_case_image_name: ${{ steps.lower.outputs.lower_case_image_name }}
+    steps:
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value={{date 'YYYYMMDD-HHmmss' tz='Asia/Seoul'}}
+          labels: |
+            maintainer=aisflow@askfront.com
+          flavor: |
+            latest=true
+
+      - name: Convert IMAGE_NAME to lowercase
+        id: lower
+        run: |
+          LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "lower_case_image_name=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: [set-up]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Set Clean Version
+        run: |
+          echo "VERSION=${{ env.RELEASE_VERSION }}" >> $GITHUB_ENV
+
+      - name: Log into GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOCKER }}
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:${{ matrix.arch }}
+            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:${{ matrix.arch }}
+          labels: ${{ needs.set-up.outputs.labels }}
+          platforms: ${{ matrix.platform }}
+
+  manifest:
+    needs: [set-up, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      # - name: Free Disk Space (Ubuntu)
+      #   uses: jlumbroso/free-disk-space@main
+      #   with:
+      #     tool-cache: true
+      #     android: true
+      #     dotnet: true
+      #     haskell: true
+      #     large-packages: true
+      #     swap-storage: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into Docker Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOCKER }}
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Create and push Docker manifest
+        uses: int128/docker-manifest-create-action@v2
+        with:
+          index-annotations: |
+            ${{ needs.set-up.outputs.labels }}
+          tags: |
+            ${{ needs.set-up.outputs.tags }}
+          sources: |
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
+            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
+            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64

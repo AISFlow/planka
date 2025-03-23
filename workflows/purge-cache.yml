@@ -1,0 +1,14 @@
+name: purge-cache
+
+on:
+  workflow_dispatch:
+
+jobs:
+  set-up:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: MyAlbum/purge-cache@v2
+        with:
+          accessed: true # Purge caches by their last accessed time (default)
+          created: false # Purge caches by their created time (default)
+          max-age: 0 # Purge caches that are older than 0 days

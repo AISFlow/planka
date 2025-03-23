@@ -1,0 +1,13 @@
+{
+  "name": "planka",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "t1": "prettier --write .",
+    "docker": "docker buildx build -t aisflow/planka:latest . --load"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

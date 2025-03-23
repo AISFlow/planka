@@ -1,6 +1,7 @@
 services:
   planka:
     image: aisflow/planka:latest
+    container_name: planka
     restart: on-failure
     volumes:
       - user-avatars:/app/public/user-avatars
@@ -14,7 +15,8 @@ services:
       - SECRET_KEY=notsecretkey
       # - TRUST_PROXY=0
       # - TOKEN_EXPIRES_IN=365 # In days
-
+      - UID=1001
+      - GID=1001
       # related: https://github.com/knex/knex/issues/2354
       # As knex does not pass query parameters from the connection string we
       # have to use environment variables in order to pass the desired values, e.g.
@@ -89,6 +91,7 @@ services:
 
   postgres:
     image: postgres:17-bookworm
+    container_name: postgres-planka
     restart: on-failure
     volumes:
       - db-data:/var/lib/postgresql/data

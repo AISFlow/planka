@@ -74,7 +74,10 @@ RUN set -eux; \
 RUN set -eux; \
     groupadd --gid ${UID} planka; \
     useradd --uid ${UID} --gid ${GID} --home-dir /app planka; \
-    install -d -o planka -g planka -m 700 /app
+    install -d -o planka -g planka -m 700 /app && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    supervisor nginx && \
+    rm -rf /var/lib/apt/lists/* 
 
 # Copy server app
 COPY --link --chown=1001:1001 --from=server-build /app /app
@@ -86,10 +89,12 @@ COPY --link --chown=1001:1001 --from=client-build /opt/build-stage/planka/client
 # Copy environment and entry files
 COPY --link --chown=1001:1001 --from=base /opt/build-stage/planka/server/.env.sample /app/.env
 COPY --link --chown=1001:1001 init /usr/local/bin/
-
+COPY --link docker/supervisord.conf /etc/supervisor/supervisord.conf
+COPY --link docker/planka.conf /etc/nginx/conf.d/default.conf
 # Declare mount points for persistent data
 VOLUME /app/public/user-avatars
 VOLUME /app/public/project-background-images
 VOLUME /app/private/attachments
 ENTRYPOINT [ "tini", "--", "init" ]
-CMD ["node", "app.js", "--prod"]
+# CMD ["node", "app.js", "--prod"]
+CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]

@@ -89,7 +89,7 @@ COPY --link --chown=1001:1001 --from=client-build /opt/build-stage/planka/client
 # Copy environment and entry files
 COPY --link --chown=1001:1001 --from=base /opt/build-stage/planka/server/.env.sample /app/.env
 COPY --link --chown=1001:1001 init /usr/local/bin/
-COPY --link --from=aisflow/supervisord:20250324-185924 /usr/local/bin/supervisord /usr/local/bin/supervisord
+COPY --link --from=aisflow/supervisord:1.0.0 /usr/local/bin/supervisord /usr/local/bin/supervisord
 COPY --link docker/supervisord.conf /etc/supervisor/supervisord.conf
 COPY --link docker/planka.conf /etc/nginx/conf.d/default.conf
 

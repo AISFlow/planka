@@ -22,16 +22,6 @@ WORKDIR /opt/build-stage/planka/client
 RUN pnpm import && pnpm install --prod
 RUN DISABLE_ESLINT_PLUGIN=true npm run build
 
-# ───────────────────────────── Supervisord stage ────────────────────────────
-FROM golang:latest AS supervisord
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential && \
-    rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-RUN git clone https://github.com/NavyStack/supervisord .
-RUN GOOS=linux go build -tags "release osusergo netgo" -a -ldflags "-linkmode external -extldflags -static" -o /usr/local/bin/supervisord
-RUN chmod +x /usr/local/bin/supervisord
-
 # ───────────────────────────── Layer cutting stage ─────────────────────────────
 FROM public.ecr.aws/docker/library/node:lts-bookworm-slim AS layer-cutter
 ENV NODE_ENV=production
@@ -99,7 +89,7 @@ COPY --link --chown=1001:1001 --from=client-build /opt/build-stage/planka/client
 # Copy environment and entry files
 COPY --link --chown=1001:1001 --from=base /opt/build-stage/planka/server/.env.sample /app/.env
 COPY --link --chown=1001:1001 init /usr/local/bin/
-COPY --link --from=supervisord /usr/local/bin/supervisord /usr/local/bin/supervisord
+COPY --link --from=aiflow/supervisord:20250324-185924 /usr/local/bin/supervisord /usr/local/bin/supervisord
 COPY --link docker/supervisord.conf /etc/supervisor/supervisord.conf
 COPY --link docker/planka.conf /etc/nginx/conf.d/default.conf
 

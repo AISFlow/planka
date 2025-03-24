@@ -22,8 +22,18 @@ WORKDIR /opt/build-stage/planka/client
 RUN pnpm import && pnpm install --prod
 RUN DISABLE_ESLINT_PLUGIN=true npm run build
 
-# ───────────────────────────── Final runtime stage ─────────────────────────────
-FROM public.ecr.aws/docker/library/node:lts-bookworm-slim AS final
+# ───────────────────────────── Supervisord stage ────────────────────────────
+FROM golang:latest AS supervisord
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+RUN git clone https://github.com/ochinchina/supervisord.git .
+RUN GOOS=linux go build -tags "release osusergo netgo" -a -ldflags "-linkmode external -extldflags -static" -o /usr/local/bin/supervisord
+RUN chmod +x /usr/local/bin/supervisord
+
+# ───────────────────────────── Layer cutting stage ─────────────────────────────
+FROM public.ecr.aws/docker/library/node:lts-bookworm-slim AS layer-cutter
 ENV NODE_ENV=production
 ENV GOSU_VERSION=1.17
 ENV TINI_VERSION=v0.19.0
@@ -56,15 +66,15 @@ RUN set -eux; \
         : "${TINI_VERSION:?TINI_VERSION is not set}"; \
         dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')"; \
         echo "Downloading Tini version ${TINI_VERSION} for architecture ${dpkgArch}"; \
-        wget -O /usr/bin/tini "https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-$dpkgArch"; \
-        wget -O /usr/bin/tini.asc "https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-$dpkgArch.asc"; \
+        wget -O /usr/local/bin/tini "https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-$dpkgArch"; \
+        wget -O /usr/local/bin/tini.asc "https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-$dpkgArch.asc"; \
         export GNUPGHOME="$(mktemp -d)"; \
         gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys 595E85A6B1B4779EA4DAAEC70B588DFF0527A9B7; \
-        gpg --batch --verify /usr/bin/tini.asc /usr/bin/tini; \
+        gpg --batch --verify /usr/local/bin/tini.asc /usr/local/bin/tini; \
         gpgconf --kill all; \
-        rm -rf "$GNUPGHOME" /usr/bin/tini.asc; \
-        chmod +x /usr/bin/tini; \
-        echo "Tini version: $(/usr/bin/tini --version)"; \
+        rm -rf "$GNUPGHOME" /usr/local/bin/tini.asc; \
+        chmod +x /usr/local/bin/tini; \
+        echo "Tini version: $(/usr/local/bin/tini --version)"; \
         \
     # Clean up
         apt-mark auto '.*' > /dev/null; \
@@ -89,12 +99,37 @@ COPY --link --chown=1001:1001 --from=client-build /opt/build-stage/planka/client
 # Copy environment and entry files
 COPY --link --chown=1001:1001 --from=base /opt/build-stage/planka/server/.env.sample /app/.env
 COPY --link --chown=1001:1001 init /usr/local/bin/
+COPY --link --from=supervisord /usr/local/bin/supervisord /usr/local/bin/supervisord
 COPY --link docker/supervisord.conf /etc/supervisor/supervisord.conf
 COPY --link docker/planka.conf /etc/nginx/conf.d/default.conf
+
+# ───────────────────────────── Final stage ─────────────────────────────
+FROM public.ecr.aws/docker/library/node:lts-bookworm-slim AS final
+ENV NODE_ENV=production
+ENV UID=1001
+ENV GID=1001
+ENV TZ=Asia/Seoul
+
+WORKDIR /app
+
+RUN set -eux; \
+    groupadd --gid ${UID} planka; \
+    useradd --uid ${UID} --gid ${GID} --home-dir /app planka; \
+    install -d -o planka -g planka -m 700 /app && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    nginx cron && \
+    rm -rf /var/lib/apt/lists/* 
+
+COPY --link --chown=1001:1001 --from=layer-cutter  /app /app
+COPY --link --chown=1001:1001 --from=layer-cutter  /usr/local/bin/init /usr/local/bin/gosu /usr/local/bin/tini /usr/local/bin/supervisord /usr/local/bin/
+COPY --link --chown=1001:1001 --from=layer-cutter  /etc/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+COPY --link --chown=1001:1001 --from=layer-cutter  /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
+
 # Declare mount points for persistent data
 VOLUME /app/public/user-avatars
 VOLUME /app/public/project-background-images
 VOLUME /app/private/attachments
+
+EXPOSE 8080/TCP
 ENTRYPOINT [ "tini", "--", "init" ]
-# CMD ["node", "app.js", "--prod"]
-CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+CMD ["supervisord"]

@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-RUN git clone https://github.com/ochinchina/supervisord.git .
+RUN git clone https://github.com/NavyStack/supervisord .
 RUN GOOS=linux go build -tags "release osusergo netgo" -a -ldflags "-linkmode external -extldflags -static" -o /usr/local/bin/supervisord
 RUN chmod +x /usr/local/bin/supervisord
 

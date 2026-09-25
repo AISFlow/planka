@@ -7,7 +7,7 @@ jobs:
   set-up:
     runs-on: ubuntu-latest
     steps:
-      - uses: MyAlbum/purge-cache@v2
+      - uses: MyAlbum/purge-cache@v3
         with:
           accessed: true # Purge caches by their last accessed time (default)
           created: false # Purge caches by their created time (default)
